@@ -66,6 +66,8 @@ public class BarcodeScanner: CAPPlugin, AVCaptureMetadataOutputObjectsDelegate {
     var isBackgroundHidden: Bool = false
 
     var savedCall: CAPPluginCall? = nil
+    var scanningPaused: Bool = false
+    var lastScanResult: String? = nil
 
     enum SupportedFormat: String, CaseIterable {
         // 1D Product
@@ -353,12 +355,20 @@ public class BarcodeScanner: CAPPlugin, AVCaptureMetadataOutputObjectsDelegate {
                 jsObject["hasContent"] = false
             }
 
-            if (self.savedCall != nil) {
-                savedCall?.resolve(jsObject)
-                savedCall = nil
+            if (savedCall != nil) {
+                if (savedCall!.keepAlive) {
+                    if (!scanningPaused && found.stringValue != lastScanResult ) {
+                        lastScanResult = found.stringValue
+                        savedCall!.resolve(jsObject)
+                    }
+                } else {
+                    savedCall!.resolve(jsObject)
+                    savedCall = nil
+                    destroy()
+                }                
+            } else {
+                self.destroy()
             }
-
-            self.destroy()
         }
     }
 
@@ -380,6 +390,24 @@ public class BarcodeScanner: CAPPlugin, AVCaptureMetadataOutputObjectsDelegate {
     @objc func startScan(_ call: CAPPluginCall) {
         self.savedCall = call
         self.scan()
+    }
+
+    @objc func startScanning(_ call: CAPPluginCall) {
+        self.savedCall = call
+        self.savedCall?.keepAlive = true
+        scanningPaused = false
+        lastScanResult = nil
+        self.scan()
+    }
+
+    @objc func pauseScanning(_ call: CAPPluginCall) {
+        scanningPaused = true
+        call.resolve()
+    }
+
+    @objc func resumeScanning(_ call: CAPPluginCall) {
+        scanningPaused = false
+        call.resolve()
     }
 
     @objc func stopScan(_ call: CAPPluginCall) {
